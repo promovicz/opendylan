@@ -7,6 +7,8 @@ Warranty:     Distributed WITHOUT WARRANTY OF ANY KIND
 define sideways method emit-mainfile
     (back-end :: <c-back-end>, ld, #rest flags, #key, #all-keys)
   let lib-name = library-description-emit-name(ld);
+  let rt-init-name = glue-name-raw("Run_Time");
+  let lib-init-name = glue-name(lib-name);
   let c-file = #f;
   with-build-area-output (stream = ld, base: "_main", type: "c")
     write(stream, "#include <stdlib.h>\n");
@@ -14,11 +16,13 @@ define sideways method emit-mainfile
     write(stream, "#include \"run-time.h\"\n\n");
 
     format(stream, "int main (int argc, char *argv[]) {\n");
-    format(stream, "  extern void %s ();\n", glue-name(lib-name));
+    format(stream, "  extern void %s ();\n", rt-init-name);
+    format(stream, "  extern void %s ();\n", lib-init-name);
     format(stream, "  extern D %s;\n", command-arguments-name());
     format(stream, "  extern D %s;\n", command-name-name());
 
     format(stream, "  GC_INIT();\n");
+    format(stream, "  %s();\n", rt-init-name);
 
     write (stream, "  D args = primitive_make_vector((argc > 0) ? argc - 1 : 0);\n");
     write (stream, "  int i;\n");
@@ -31,7 +35,7 @@ define sideways method emit-mainfile
     write (stream, "      (primitive_raw_as_string(argv[i]), args,\n");
     write (stream, "       primitive_raw_as_integer(i - 1));\n");
     format(stream, "  %s = (D)args;\n", command-arguments-name());
-    format(stream, "  %s();\n", glue-name(lib-name));
+    format(stream, "  %s();\n", lib-init-name);
     format(stream, "  return(0);\n");
     format(stream, "}\n");
     c-file := stream-locator(stream);
@@ -45,8 +49,7 @@ define sideways method emit-gluefile
   with-build-area-output (stream = ld, base: "_glue", type: "c")
     let used-glue-names = used-glue-names(ld);
     let cr-init-names = cr-init-names(ld, cr-names);
-    let rt-init-names = list(glue-name-raw("Run_Time"));
-    let init-names = concatenate(rt-init-names, used-glue-names, cr-init-names);
+    let init-names = concatenate(used-glue-names, cr-init-names);
     write (stream, "#include \"run-time.h\"\n\n");
     format(stream, "void %s () {\n", glue-name(lib-name));
     for (name in init-names)
