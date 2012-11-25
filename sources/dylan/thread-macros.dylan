@@ -145,6 +145,19 @@ arguments:
 
 end macro;
 
+define macro conditional-set!
+
+  { conditional-set! (?place:*, ?prev-val:expression, ?new-val:expression) }
+    => { begin
+           let $expected$ = ?prev-val;
+           let $updated$ = ?new-val;
+           conditional-update-aux ($updated$, $expected$, ?place)
+             success #t
+             failure #f
+           end;
+         end }
+
+end macro;
 
 define macro conditional-update!
 
