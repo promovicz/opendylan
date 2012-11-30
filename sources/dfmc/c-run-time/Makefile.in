@@ -49,6 +49,9 @@ OBJS    = $(OBJDIR)/posix-threads.o \
           $(OBJDIR)/run-time.o \
           $(OBJDIR)/trace.o
 
+HDRS	= $(srcdir)/run-time.h \
+          $(srcdir)/trace.h
+
 C_RUNTIME_LIBRARY = $(OBJDIR)/libdylan-c-runtime.a
 
 RUNTIMELIBDEST  = $(LIBDEST)/runtime/c-$(OPEN_DYLAN_PLATFORM_NAME)
@@ -68,9 +71,8 @@ $(INCDEST):
 $(RUNTIMELIBDEST):
 	mkdir -p $(RUNTIMELIBDEST)
 
-install-header: $(srcdir)/run-time.h $(INCDEST)
-	cp -fp $(srcdir)/trace.h $(INCDEST)
-	cp -fp $(srcdir)/run-time.h $(INCDEST)
+install-header: $(HDRS) $(INCDEST)
+	cp -fp $(HDRS) $(INCDEST)
 
 install-runtime: $(C_RUNTIME_LIBRARY) $(RUNTIMELIBDEST)
 	cp -fp $(C_RUNTIME_LIBRARY) $(RUNTIMELIBDEST)
