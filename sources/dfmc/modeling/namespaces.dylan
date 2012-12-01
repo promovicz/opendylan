@@ -694,7 +694,7 @@ define &module dylan-extensions
     // classify-float,
     decode-single-float, encode-single-float,
     decode-double-float, encode-double-float,
-    float-divide-by-0, float-overflow, float-underflow;
+    float-divide-by-0, float-invalid, float-overflow, float-underflow;
 
   create
     immutable-vector,
@@ -723,6 +723,7 @@ define &module dylan-extensions
       <stack-overflow-error>,
       <arithmetic-error>,
         <division-by-zero-error>,
+        <arithmetic-domain-error>,
         <arithmetic-overflow-error>,
         <arithmetic-underflow-error>;
 
