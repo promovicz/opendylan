@@ -12,6 +12,10 @@
 #include <signal.h>
 #endif
 
+#include <fenv.h>
+#include <ucontext.h>
+#include <sys/ucontext.h>
+
 #if defined(__x86_64__)
 #define NO_LONGLONG 1
 #define LONG_BIT 64
@@ -4731,6 +4735,72 @@ static void call_application_exit_functions(void) {
   (void) Kcall_application_exit_functionsVKeI();
 }
 
+#ifdef REG_EIP
+#define REG_PC REG_EIP
+#endif
+#ifdef REG_RIP
+#define REG_PC REG_RIP
+#endif
+
+static inline void chain_sigaction(const struct sigaction *act,
+                                   int sig, siginfo_t *info, void *uap)
+{
+  if(act->sa_flags & SA_SIGINFO) {
+    (*act->sa_sigaction)(sig, info, uap);
+  } else {
+    (*act->sa_handler)(sig);
+  }
+}
+
+extern D Kinteger_divide_by_0VKeI ();
+extern D Kfloat_divide_by_0VKeI ();
+extern D Kfloat_invalidVKeI ();
+extern D Kfloat_overflowVKeI ();
+extern D Kfloat_underflowVKeI ();
+
+void signal_int_div0 (void) {
+  Kinteger_divide_by_0VKeI();
+}
+void signal_float_div0 (void) {
+  Kfloat_divide_by_0VKeI();
+}
+void signal_float_invalid (void) {
+  Kfloat_invalidVKeI();
+}
+void signal_float_overflow (void) {
+  Kfloat_overflowVKeI();
+}
+void signal_float_underflow (void) {
+  Kfloat_underflowVKeI();
+}
+
+struct sigaction sigfpe_next;
+
+static void handle_sigfpe(int sig, siginfo_t *nfo, void *ctx) {
+  ucontext_t *uc = (ucontext_t*)ctx;
+  switch(nfo->si_code) {
+  case FPE_INTDIV:
+    uc->uc_mcontext.gregs[REG_PC] = (greg_t) &signal_int_div0;
+    break;
+  case FPE_FLTDIV:
+    uc->uc_mcontext.gregs[REG_PC] = (greg_t) &signal_float_div0;
+    break;
+  case FPE_FLTINV:
+    uc->uc_mcontext.gregs[REG_PC] = (greg_t) &signal_float_invalid;
+    break;
+  case FPE_FLTOVF:
+    uc->uc_mcontext.gregs[REG_PC] = (greg_t) &signal_float_overflow;
+    break;
+  case FPE_FLTUND:
+    uc->uc_mcontext.gregs[REG_PC] = (greg_t) &signal_float_underflow;
+    break;
+  default:
+    chain_sigaction(&sigfpe_next, sig, nfo, ctx);
+    break;
+  }
+}
+
+
 /**
  * Initialize the dylan c-run-time
  *
@@ -4755,6 +4825,20 @@ void _Init_Run_Time ()
 #ifdef OPEN_DYLAN_PLATFORM_UNIX
 #ifdef SIGPIPE
     signal(SIGPIPE, SIG_IGN);
+#endif
+#endif
+
+    // set up numeric exceptions
+#ifdef OPEN_DYLAN_PLATFORM_UNIX
+#ifdef SIGFPE
+    if(getenv("OPEN_DYLAN_SIGFPE")) {
+      feenableexcept(FE_DIVBYZERO|FE_UNDERFLOW|FE_OVERFLOW|FE_INVALID);
+      struct sigaction fpe_handler;
+      sigfillset(&fpe_handler.sa_mask);
+      fpe_handler.sa_sigaction = handle_sigfpe;
+      fpe_handler.sa_flags = SA_SIGINFO;
+      sigaction(SIGFPE, &fpe_handler, &sigfpe_next);
+    }
 #endif
 #endif
 

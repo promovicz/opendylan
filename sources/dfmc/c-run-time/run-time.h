@@ -1,6 +1,10 @@
 #ifndef OPENDYLAN_CRT_RUNTIME_H
 #define OPENDYLAN_CRT_RUNTIME_H
 
+#ifdef OPEN_DYLAN_PLATFORM_LINUX
+#define _GNU_SOURCE
+#endif
+
 #include <setjmp.h>
 
 #ifdef __GNUC__
