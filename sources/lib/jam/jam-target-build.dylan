@@ -12,6 +12,11 @@ define method jam-target-build
      #key force?,
           progress-callback :: <function> = ignore)
  => (build-successful? :: <boolean>);
+
+  let collected-targets = make(<object-set>);
+  let collected-work = make(<object-set>);
+  let work-table = make(<object-table>);
+
   local
     method bind(name :: <byte-string>) => (target :: <jam-target>);
       bind-aux(#f, jam-target(jam, name))
@@ -172,44 +177,76 @@ define method jam-target-build
       target
     end method,
 
+    method getwork(target :: <jam-target>) => (work :: false-or(<work>));
+      element(work-table, target, default: #f);
+    end method,
+
+    method build-target(target :: <jam-target>) => ();
+      format-out("Building %s\n", target-name(target));
+      build(target);
+    end method,
+
+    method collect-target(target :: <jam-target>) => (ok? :: <boolean>);
+      block (return)
+        // ignore stuff that is already done
+        if (target.target-build-progress == #"done")
+          return(target.target-build-execution-result == #"ok");
+        end;
+        // remember this target
+        if (member?(target, collected-targets))
+          return(#t);
+        else
+          add!(collected-targets, target);
+        end;
+
+        // mark target as onstack
+        target.target-build-progress := #"onstack";
+
+        // collect target dependencies
+        let deps = #();
+        // walk dependencies
+        for(target in target.target-depends)
+          unless(collect-target(target))
+            return(#f);
+          end;
+          let w = getwork(target);
+          if(w)
+            deps := add!(deps, w);
+          end;
+        end;
+        // walk action invocation dependencies
+        for (invocation in target.target-action-invocations)
+          for (target in invocation.action-invocation-targets)
+            unless(collect-target(target))
+              return(#f);
+            end;
+            let w = getwork(target);
+            if(w)
+              deps := add!(deps, w);
+            end;
+          end;
+        end;
+
+        let name = concatenate("jam: ", target-name(target));
+        let work = make(<dependency-work>,
+                        name: name,
+                        dependencies: deps,
+                        function: curry(build-target, target));
+
+        // remember it
+        element(work-table, target) := work;
+        collected-work := add!(collected-work, work);
+
+        // success
+        return(#t);
+      end;
+    end method,
+
     // This is somewhat simplistic compared to mmk or the original Jam.
     // We can do better... 
     //
     method build(target :: <jam-target>) => (success? :: <boolean>);
       block (return)
-        if (target.target-build-progress == #"done")
-          return(target.target-build-execution-result == #"ok");
-        elseif (target.target-build-progress ~== #"init")
-          return(#t);
-        end if;
-
-        target.target-build-progress := #"onstack";
-
-        let failed? = #f;
-        let seen = make(<object-set>);
-
-        for(depend in target.target-depends)
-          unless (build(depend))
-            failed? := #t;
-          end unless;
-        end for;
-        add!(seen, target);
-        if (failed?) return(#f) end;
-        
-        for (invocation in target.target-action-invocations)
-          for (target in invocation.action-invocation-targets)
-            unless (member?(target, seen))
-              for(depend in target.target-depends)
-                unless (build(depend))
-                  failed? := #t;
-                end unless;
-              end for;
-              add!(seen, target);
-            end unless;
-          end for;
-        end for;
-        if (failed?) return(#f) end;
-        
         target.target-build-progress := #"active";
 
         unless (target.target-build-status > $build-status-init)
@@ -330,17 +367,32 @@ define method jam-target-build
       progress-callback(copy-sequence(msg, end: _end));
     end method;
 
-  // first pass
-  let targets = map(bind, target-names);
+  let executor = make(<fixed-thread-executor>,
+                      name: "jam",
+                      thread-count: 4,
+                      queue: make(<blocking-queue>));
 
-  // second pass
-  let ok? = #t;
-  for (target in targets)
-    if(~build(target))
-      ok? := #f;
-    end if;
-  end for;
-  ok?
+  block (return)
+    // bind root targets
+    let targets = map(bind, target-names);
+
+    // collect targets that need building, including dependencies
+    for (target in targets)
+      unless(collect-target(target))
+        return(#f);
+      end;
+    end for;
+
+    // submit work to executor
+    for(work in collected-work)
+      executor-request(executor, work);
+    end for;
+
+    // wait for executor to finish
+    executor-shutdown(executor, drain?: #t, join?: #t);
+  end;
+
+  #t;
 end method;
 
 define method bind-targets

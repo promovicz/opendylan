@@ -8,6 +8,7 @@ Warranty:     Distributed WITHOUT WARRANTY OF ANY KIND
 define library jam
   use common-dylan;
   use collections;
+  use concurrency;
   use io;
   use system;
   use parser-run-time;
@@ -73,6 +74,7 @@ define module jam-internals
   use set;
   use bit-set;
   use collectors;
+  use concurrency;
   use streams;
   use file-system;
   use locators;
